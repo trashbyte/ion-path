@@ -1,0 +1,17 @@
+[package]
+name = "ion-path"
+version = "0.0.1"
+edition = "2021"
+
+[lib]
+name = "ion_path"
+path = "src/lib.rs"
+
+[dependencies]
+peg = "0.8.1"
+ion-rs = "0.18.1"
+num = "0.4.1"
+base64 = "0.21.2"
+regex = "1.9.1"
+wildmatch = "2.1.1"
+bigdecimal = "*"

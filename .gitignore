@@ -1,0 +1,6 @@
+/target
+/.idea
+/.local
+*.iml
+Cargo.lock
+src/main.rs
