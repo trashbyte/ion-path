@@ -1,53 +1,130 @@
 use std::collections::VecDeque;
-use regex::Regex;
 use num::{BigInt, Num};
 use base64::Engine;
 use ion_rs::IonType;
 use super::{Path, Segment, Key, Literal, Predicate, CompareOp};
 
-fn unescape(s: &str) -> String {
-    let string = s.replace(r"\0","\0")
-        .replace(r"\r","\r")
-        .replace(r"\n","\n")
-        .replace(r"\t","\t")
-        .replace(r"\'","'")
-        .replace(r#"\""#,"\"")
-        .replace(r"\a","\x07")
-        .replace(r"\b","\x08")
-        .replace(r"\v","\x0B")
-        .replace(r"\f","\x0C")
-        .replace(r"\?","?")
-        .replace(r"\/","/")
-        .replace(r"\\","\\")
-        .replace("\\\r", "")
-        .replace("\\\n", "");
-    let re = Regex::new(r#"(\\x(?<h1>[0-9a-fA-F]{2}))|(\\u(?<h2>[0-9a-fA-F]{4}))|(\\U000(?<h3>[0-9a-fA-F]{6}))|(\\U0010(?<h4>[0-9a-fA-F]{4}))"#).unwrap();
-    re.replace_all(&string, |caps: &regex::Captures<'_>| {
-        let codepoint;
-        if let Some(mat) = caps.name("h1") {
-            codepoint = u32::from_str_radix(mat.as_str(), 16).unwrap();
-        }
-        else if let Some(mat) = caps.name("h2") {
-            codepoint = u32::from_str_radix(mat.as_str(), 16).unwrap();
-        }
-        else if let Some(mat) = caps.name("h3") {
-            codepoint = u32::from_str_radix(mat.as_str(), 16).unwrap();
-        }
-        else if let Some(mat) = caps.name("h4") {
-            codepoint = u32::from_str_radix(mat.as_str(), 16).unwrap();
+
+fn unescape(s: &str) -> Result<String, &'static str> {
+    const E: &'static str = "invalid escape sequence";
+
+    let mut string = String::new();
+    let mut escaping = false;
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if escaping {
+            match c {
+                '0' => string.push('\0'),
+                'a' => string.push('\x07'),
+                'b' => string.push('\x08'),
+                'f' => string.push('\x0C'),
+                'v' => string.push('\x0B'),
+                'n' => string.push('\n'),
+                'r' => string.push('\r'),
+                't' => string.push('\t'),
+                '?' => string.push('?'),
+                '/' => string.push('/'),
+                '\\' => string.push('\\'),
+                '\'' => string.push('\''),
+                '"' => string.push('"'),
+                '\r' | '\n' => {}, // remove newline chars immediately following backslash
+                'x' => {
+                    match chars.next() {
+                        None => return Err(E),
+                        Some(c1) => match chars.next() {
+                            None => return Err(E),
+                            Some(c2) => {
+                                let mut buf = String::from(c1);
+                                buf.push(c2);
+                                let num = u32::from_str_radix(&buf, 16).map_err(|_| E)?;
+                                string.push(char::from_u32(num).ok_or(E)?);
+                            }
+                        }
+                    }
+                }
+                'u' => {
+                    match chars.next() {
+                        None => return Err(E),
+                        Some(c1) => match chars.next() {
+                            None => return Err(E),
+                            Some(c2) => match chars.next() {
+                                None => return Err(E),
+                                Some(c3) => match chars.next() {
+                                    None => return Err(E),
+                                    Some(c4) => {
+                                        let mut buf = String::from(c1);
+                                        buf.push(c2);
+                                        buf.push(c3);
+                                        buf.push(c4);
+                                        let num = u32::from_str_radix(&buf, 16).map_err(|_| E)?;
+                                        string.push(char::from_u32(num).ok_or(E)?);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                'U' => {
+                    match chars.next() {
+                        None => return Err(E),
+                        Some(c1) => match chars.next() {
+                            None => return Err(E),
+                            Some(c2) => match chars.next() {
+                                None => return Err(E),
+                                Some(c3) => match chars.next() {
+                                    None => return Err(E),
+                                    Some(c4) => match chars.next() {
+                                        None => return Err(E),
+                                        Some(c5) => match chars.next() {
+                                            None => return Err(E),
+                                            Some(c6) => match chars.next() {
+                                                None => return Err(E),
+                                                Some(c7) => match chars.next() {
+                                                    None => return Err(E),
+                                                    Some(c8) => {
+                                                        let mut buf = String::from(c1);
+                                                        buf.push(c2);
+                                                        buf.push(c3);
+                                                        buf.push(c4);
+                                                        buf.push(c5);
+                                                        buf.push(c6);
+                                                        buf.push(c7);
+                                                        buf.push(c8);
+                                                        let num = u32::from_str_radix(&buf, 16).map_err(|_| E)?;
+                                                        string.push(char::from_u32(num).ok_or(E)?);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => string.push(c)
+            }
+            escaping = false;
         }
         else {
-            unreachable!();
+            if c == '\\' {
+                escaping = true;
+            }
+            else {
+                string.push(c);
+            }
         }
-        let mut result = String::new();
-        result.push(char::from_u32(codepoint).unwrap());
-        result
-    }).to_string()
+    }
+    // put back the backslash if the string ends without an escape character
+    if escaping { string.push('\\'); }
+    Ok(string)
 }
+
+
 
 peg::parser!{
     pub grammar ionpath_parser() for str {
-        rule ws() = quiet!{[' ' | '\t' | '\x0B' | '\x0C' | '\r' | '\n']*}
+        rule ws() = quiet!{([' ' | '\t' | '\x0B' | '\x0C' | '\r' | '\n'] / "\\\n" / "\\\r")*}
 
         // nulls
 
@@ -147,12 +224,12 @@ peg::parser!{
               / $("\\U0010" hex_digit() hex_digit() hex_digit() hex_digit())
 
         rule escape_seq() -> &'input str
-            = $("\\a" / "\\b" / "\\t" / "\\n" / "\\f" / "\\r" / "\\v" / "\\0" / "\\?" / "\\\"" / "\\'" / "\\/" / "\\\\")
+            = $("\\a" / "\\b" / "\\t" / "\\n" / "\\f" / "\\r" / "\\v" / "\\0" / "\\?" / "\\\"" / "\\'" / "\\/" / "\\\\" / "\\\n" / "\\\r")
 
         rule quoted_symbol() -> Literal
             = s:$("'" (symbol_text_allowed() / unicode_escape() / escape_seq())* "'")
-        {
-            Literal::Symbol(unescape(&s[1..(s.len()-1)]))
+        {?
+            unescape(&s[1..(s.len()-1)]).map(|s| Literal::Symbol(s))
         }
 
         rule ident_symbol() -> Literal
@@ -199,8 +276,8 @@ peg::parser!{
 
         pub rule string() -> Literal
             = s:(long_quoted_string() / quoted_string())
-        {
-            Literal::String(unescape(&s))
+        {?
+            unescape(&s).map(|s| Literal::String(s))
         }
 
         // blob
@@ -225,9 +302,10 @@ peg::parser!{
 
         // clob
 
-        pub rule clob() -> Literal = s:(short_quoted_clob() / long_quoted_clob()) {
-            let string = unescape(&s);
-            Literal::Clob(string.encode_utf16().map(|long| (long & 0xFF) as u8).collect())
+        pub rule clob() -> Literal = s:(short_quoted_clob() / long_quoted_clob())
+        {?
+            let string = unescape(&s)?;
+            Ok(Literal::Clob(string.encode_utf16().map(|long| (long & 0xFF) as u8).collect()))
         }
 
         rule short_quoted_clob() -> String
@@ -466,7 +544,7 @@ peg::parser!{
             = ws() ("or"/"OR"/"oR"/"Or") ws() p:(pred_cmp() / pred_single_path())  { p }
 
         rule first_segment() -> (Segment, bool /* is_absolute */)
-            = first:"/"? second:"/"? ws() annotation_lists:(annotation_choice_list() / annotation_single())* k:key() pred_lists:(predicate_OR_list()*)
+            = first:"/"? second:"/"? ws() annotation_lists:(annotation_choice_list() / annotation_single())* k:key() pred_lists:(predicate_OR_list()*) ws()
         {
             (Segment {
                 recursive: first.is_some() && second.is_some(),
@@ -477,7 +555,7 @@ peg::parser!{
         }
 
         rule other_segment() -> (Segment, bool /* is_absolute */)
-            = "/" second:"/"? ws() annotation_lists:(annotation_choice_list() / annotation_single())* k:key() pred_lists:(predicate_OR_list()*)
+            = "/" second:"/"? ws() annotation_lists:(annotation_choice_list() / annotation_single())* k:key() pred_lists:(predicate_OR_list()*) ws()
         {
             (Segment {
                 recursive: second.is_some(),

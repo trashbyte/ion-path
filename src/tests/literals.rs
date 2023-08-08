@@ -611,9 +611,9 @@ fn test_symbols_positive() {
     assert_eq!(ionpath_parser::symbol(r#"''"#), Ok(Literal::Symbol("".into())));
     assert_eq!(ionpath_parser::symbol(r#"''"#), Ok(Literal::Symbol("".into())));
     assert_eq!(ionpath_parser::symbol(r#"$0"#), Ok(Literal::Symbol("$0".into())));
-    assert_eq!(ionpath_parser::symbol(r#"'\\\n'"#), Ok(Literal::Symbol("".into())));
-    assert_eq!(ionpath_parser::symbol(r#"'\\\r\\\n'"#), Ok(Literal::Symbol("".into())));
-    assert_eq!(ionpath_parser::symbol(r#"'\\\r'"#), Ok(Literal::Symbol("".into())));
+    assert_eq!(ionpath_parser::symbol("'\\\n'"), Ok(Literal::Symbol("".into())));
+    assert_eq!(ionpath_parser::symbol("'\\\r\\\n'"), Ok(Literal::Symbol("".into())));
+    assert_eq!(ionpath_parser::symbol("'\\\r'"), Ok(Literal::Symbol("".into())));
 }
 
 #[test]
